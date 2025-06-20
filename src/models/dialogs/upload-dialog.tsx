@@ -10,13 +10,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import uuid from "react-uuid";
-import { Camera } from "lucide-react";
+import { Camera, CloudHail } from "lucide-react";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import { useState } from "react";
 import { getToken, submitReceiptApi, uploadFile } from "@/api/loyalty-api";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { data } from "react-router-dom";
+import { CheckAuthen, LoginServices } from "@/services/apiService/loginService";
+import { setAuthorization } from "@/services/apiService/configURL";
+import { apiNodeJS, URL_API_UPLOAD_GCS } from "@/services/api/apiNode";
+import { homeServices } from "@/services/apiService/homeService";
 
 interface UploadDialogProps {
   open: boolean;
@@ -33,84 +36,55 @@ export function UploadDialog({
   const { executeRecaptcha } = useGoogleReCaptcha();
   const [file, setFile] = useState<File | null>(null);
 
-  //upload
-  const uploadInvoice = async (
-    imageFile: File,
-    token_captcha: string,
-    token: string
-  ) => {
-    const formDataGCS = new FormData();
-    formDataGCS.append("file", imageFile);
-    const fileName =
-      uuid() +
-      "_" +
-      format(new Date(), "dd-MM-yyyy-HH-mm-ss") +
-      "_" +
-      uuid() +
-      ".jpg";
-    formDataGCS.append("fileName", fileName);
-    formDataGCS.append(
-      "ocrBase",
-      "http://ec2-13-250-133-136.ap-southeast-1.compute.amazonaws.com/api/ocr/scan?sm=auto&pb=spvb"
-    );
-
+  //upload invoice
+  const uploadInvoiceAndSubmit = async () => {
     try {
-      const res = await uploadFile(formDataGCS);
-      console.log(res);
+      const formDataGCS = new FormData();
+      formDataGCS.append("file", file as Blob);
+      const fileName =
+        uuid() +
+        "_" +
+        format(new Date(), "dd-MM-yyyy-HH-mm-ss") +
+        "_" +
+        uuid() +
+        ".jpg";
+      formDataGCS.append("fileName", fileName);
+      formDataGCS.append(
+        "ocrBase",
+        "http://ec2-13-250-133-136.ap-southeast-1.compute.amazonaws.com/api/ocr/scan?sm=auto&pb=spvb"
+      );
+      const dataUpload = await apiNodeJS.postUploadToNode(
+        URL_API_UPLOAD_GCS,
+        formDataGCS
+      );
+      console.log(">>> dataUpload", dataUpload);
+      const tokenUpload = await handleRecaptchaExecution("form_submit");
+
       const params = {
         ocr_result: `{}`,
         ocr_endpoint:
           "http://ec2-13-250-133-136.ap-southeast-1.compute.amazonaws.com/api/ocr/scan?sm=auto&pb=spvb",
-        gsutil_url: res?.gsutil_url,
-        public_url: res?.public_url,
+        gsutil_url: dataUpload?.gsutil_url,
+        public_url: dataUpload?.public_url,
         ocr_method: "api_v2",
         request_id: uuid() + "-" + format(new Date(), "ddMMyyyyHHmmss"),
         receipt_datetime: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
-        recaptcha_token_response: token_captcha,
+        recaptcha_token_response: tokenUpload,
       };
-      try {
-        const res = await submitReceiptApi(params, token);
 
-        if (
-          res.meta.status_code === 404 ||
-          res.meta.status_code === 403 ||
-          res.meta.status_code === 200 ||
-          res.meta.status_code === 400
-        ) {
-          toast({
-            title: "Uploading Invoice",
-            description: "Hóa đơn đã được tải lên thành công",
-            variant: "success",
-          });
-        } else {
-          throw new Error("Không tải được hóa đơn lên");
-        }
-      } catch (error) {
-        toast({
-          title: "Uploading Invoice",
-          description:
-            error instanceof Error
-              ? error.message
-              : "Đã xảy ra lỗi khi tải lên hóa đơn",
-          variant: "destructive",
-        });
-        const token = await handleRecaptchaExecution("form_submit");
-        const data = await getToken(account?.phone as string, token as string);
-        if (data && data.data.token) {
-          addOrUpdateUserByPhone({
-            phone: account?.phone as string,
-            token: data.data.token,
-          });
-        } else {
-          throw new Error("Không lấy được token từ API");
-        }
-      }
+      const submitResponse = await homeServices.submitReceiptApi(params);
+      console.log(submitResponse);
+      toast({
+        title: "Uploading Invoice",
+        description: "Hóa đơn đã được tải lên thành công",
+        variant: "success",
+      });
     } catch (error) {
-      throw new Error(
-        error instanceof Error ? error.message : "Lỗi không xác định"
-      );
+      throw new Error("Error uploading invoice: " + error);
     }
   };
+
+  //exe capcaha
   const handleRecaptchaExecution = async (action: string) => {
     if (!executeRecaptcha) {
       console.error("Execute recaptcha is not yet available");
@@ -118,66 +92,112 @@ export function UploadDialog({
     }
     return await executeRecaptcha(action);
   };
-  function addOrUpdateUserByPhone(newUser: { phone: string; token: string }) {
-    const usersData = localStorage.getItem("users");
-    const users = usersData ? JSON.parse(usersData) : [];
 
-    const index = users.findIndex((user: any) => user.phone === newUser.phone);
+  function addOrUpdateUserByPhone(newData: any) {
+    const key = "users"; // tên key trong localStorage
+    let users = [];
+
+    // Lấy và parse mảng từ localStorage
+    const storedData = localStorage.getItem(key);
+    if (storedData) {
+      try {
+        users = JSON.parse(storedData);
+      } catch (e) {
+        console.error("Lỗi JSON:", e);
+        users = [];
+      }
+    }
+
+    // Kiểm tra xem phone đã tồn tại chưa
+    const index = users.findIndex((user: any) => user.phone === newData.phone);
 
     if (index !== -1) {
-      // Nếu tồn tại, cập nhật lại thông tin
-      users[index] = { ...users[index], ...newUser };
-      console.log("Đã cập nhật user với số điện thoại:", newUser.phone);
+      // Nếu tồn tại: cập nhật user
+      users[index] = newData;
     } else {
-      users.push(newUser);
-      console.log("Đã thêm mới user với số điện thoại:", newUser.phone);
+      // Nếu chưa tồn tại: thêm mới
+      users.push(newData);
     }
 
     // Lưu lại vào localStorage
-    localStorage.setItem("users", JSON.stringify(users));
+    localStorage.setItem(key, JSON.stringify(users));
   }
 
-  function findUsersWithSamePhone(phone: string) {
-    const userData = localStorage.getItem("users");
-    const user = userData ? JSON.parse(userData) : null;
-    if (!Array.isArray(user)) {
-      console.error("Tham số đầu tiên phải là mảng JSON.");
-      return [];
+  function findPhoneInLocalStorage(phone: string) {
+    // Lấy dữ liệu từ localStorage
+    const data = localStorage.getItem("users");
+
+    if (!data) {
+      console.warn("Không có dữ liệu trong localStorage.");
+      return null;
     }
 
-    return user.filter((item) => item.phone === phone);
+    try {
+      const users = JSON.parse(data);
+
+      // Tìm user có số điện thoại khớp
+      const found = users.find((user: any) => user.phone === phone);
+
+      return found || null;
+    } catch (e) {
+      console.error("Lỗi khi phân tích JSON từ localStorage:", e);
+      return null;
+    }
   }
 
+  const addAuthorization = async (token: string) => {
+    try {
+      const tokenUsers = await LoginServices.LoginApi({
+        login: account?.phone as string,
+        password: "Vn123456",
+        recaptcha_token_response: token,
+      });
+      addOrUpdateUserByPhone({
+        phone: account?.phone as string,
+        token: tokenUsers.data.token,
+      });
+      setAuthorization(tokenUsers.data.token);
+      toast({
+        title: "login success",
+        description: "Đăng nhập thành công tài khoản ",
+        variant: "success",
+      });
+    } catch (error) {
+      throw new Error("Khong dang nhap duoc tai khoan");
+    }
+  };
+
   const handleSubmit = async () => {
+    //get token recaptcha
     const token = await handleRecaptchaExecution("form_submit");
+
     if (token) {
-      const dataUsers = findUsersWithSamePhone(account?.phone as string);
-      console.log(dataUsers);
+      const dataUsers = findPhoneInLocalStorage(account?.phone as string);
+      if (!dataUsers) {
+        //gettoken and add user
+        await addAuthorization(token);
+      }
       try {
-        if (dataUsers.length > 0) {
-          console.log(">>> chay vao day");
-          uploadInvoice(file as File, token, dataUsers[0].token);
-        } else {
-          const data = await getToken(
-            account?.phone as string,
-            token as string
-          );
-          if (data && data.data.token) {
-            addOrUpdateUserByPhone({
-              phone: account?.phone as string,
-              token: data.data.token,
-            });
-          } else {
-            throw new Error("Không lấy được token từ API");
+        const dataUsers = findPhoneInLocalStorage(account?.phone as string);
+        setAuthorization(dataUsers?.token || "");
+        try {
+          const ctk: any = await CheckAuthen();
+          if (ctk.meta.status_code !== 200) {
+            throw new Error();
           }
+        } catch (error) {
+          toast({
+            title: "Check Authen",
+            description: "Không thể xác thực tài khoản",
+            variant: "destructive",
+          });
+          await addAuthorization(token);
         }
+        await uploadInvoiceAndSubmit();
       } catch (error) {
         toast({
           title: "Uploading Invoice",
-          description:
-            error instanceof Error
-              ? error.message
-              : "Đã xảy ra lỗi khi tải lên hóa đơn",
+          description: error + "Đã xảy ra lỗi khi tải lên hóa đơn",
           variant: "destructive",
         });
       }

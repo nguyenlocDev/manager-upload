@@ -17,9 +17,8 @@ export const setAuthorizationSessionToken = (token: string) => {
 };
 axiosInstance.interceptors.response.use(
   function (response) {
-    console.log(response);
     if (response.data?.meta?.status) {
-      return response.data.data;
+      return response.data;
     } else {
       //logic
       return Promise.reject(response.data?.meta?.message);

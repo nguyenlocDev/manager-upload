@@ -13,6 +13,8 @@ import { useEffect } from "react";
 export default function HomePage() {
   const navigate = useNavigate();
   useEffect(() => {
+    console.log(window.location.pathname);
+    if (window.location.pathname !== "/") return;
     navigate("/manager", {
       replace: true,
     });
@@ -29,7 +31,7 @@ export default function HomePage() {
             <h1 className="text-xl font-semibold">Bảng điều khiển</h1>
           </header>
           <div className="flex w-full overflow-hidden h-full flex-1 flex-col gap-4 p-4">
-            <div className="rounded-lg flex flex-col overflow-y-scroll  w-full h-full border border-dashed p-8">
+            <div className="rounded-lg flex flex-col overflow-y-auto  w-full h-full border border-dashed p-8">
               <Outlet />
             </div>
           </div>

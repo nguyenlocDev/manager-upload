@@ -2,7 +2,7 @@
 import { axiosInstance } from "./configURL";
 
 export const LoginServices = {
-  LoginApi: (data: { phone: string; password: string; token: string }) => {
+  LoginApi: (data: any) => {
     return axiosInstance.post("/consumer/login", {
       params: data,
     });
@@ -29,12 +29,6 @@ export const LoginServices = {
   },
 };
 
-export const CheckAuthen = () => {
-  LoginServices.CheckAuthenExpired()
-    .then((res) => {
-      console.log("CheckAuthen", res.data);
-    })
-    .catch((err) => {
-      console.log("CheckAuthen", err);
-    });
+export const CheckAuthen = async () => {
+  return LoginServices.CheckAuthenExpired();
 };

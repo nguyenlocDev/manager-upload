@@ -2,6 +2,7 @@ import { Route, Routes } from "react-router-dom";
 import ManagerPage from "./pages/manager-page";
 import HomePage from "./pages/home-page";
 import { GoogleReCaptchaProvider } from "react-google-recaptcha-v3";
+import AccountPage from "./pages/account-page";
 const App = () => {
   return (
     <>
@@ -18,6 +19,7 @@ const App = () => {
         <Routes>
           <Route path="/" element={<HomePage />}>
             <Route path="/manager" element={<ManagerPage />}></Route>
+            <Route path="/account" element={<AccountPage />}></Route>
           </Route>
         </Routes>
       </GoogleReCaptchaProvider>

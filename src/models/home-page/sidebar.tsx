@@ -39,7 +39,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton asChild>
-              <a href="#" className="flex items-center">
+              <a href="/account" className="flex items-center">
                 <UserCircle className="mr-3 h-5 w-5" />
                 <span>Tài khoản</span>
               </a>
